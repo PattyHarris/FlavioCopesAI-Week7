@@ -19,7 +19,7 @@ AI-powered recipe suggestion app built with `React`, `TypeScript`, `Vite`, `Tail
 
 You can either:
 
-- copy [.env.example](/Users/pattyharris/Documents/FlavioCopesBootcamp/AIBootcamp/Week5/.env.example) to `.env.local`
+- copy [`./.env.example`](./.env.example) to `.env.local`
 - or keep using the existing `.env.api.key`
 
 2. Add your OpenAI key.
@@ -43,7 +43,7 @@ npm install
 
 4. Optional for Supabase-backed persistence:
 
-- run [supabase/schema.sql](/Users/pattyharris/Documents/FlavioCopesBootcamp/AIBootcamp/Week5/supabase/schema.sql) in the Supabase SQL editor
+- run [`./supabase/schema.sql`](./supabase/schema.sql) in the Supabase SQL editor
 - set `SUPABASE_URL`
 - set `SUPABASE_SECRET_KEY`
 
@@ -164,7 +164,7 @@ Notes:
 
 To enable persistence for bookmarks and search history:
 
-1. Run [supabase/schema.sql](/Users/pattyharris/Documents/FlavioCopesBootcamp/AIBootcamp/Week5/supabase/schema.sql)
+1. Run [`./supabase/schema.sql`](./supabase/schema.sql)
 2. Set:
    - `SUPABASE_URL`
    - `SUPABASE_SECRET_KEY`
@@ -207,19 +207,19 @@ After the recipes are generated, the backend attempts to create recipe images us
 
 ## File Guide
 
-- [src/App.tsx](/Users/pattyharris/Documents/FlavioCopesBootcamp/AIBootcamp/Week5/src/App.tsx): main app flow, grouped search history, bookmarks, repeat-search refocus behavior, and staged image loading
-- [src/components/IngredientInput.tsx](/Users/pattyharris/Documents/FlavioCopesBootcamp/AIBootcamp/Week5/src/components/IngredientInput.tsx): ingredient entry UI and starter ingredient chips
-- [src/components/SearchResultsRow.tsx](/Users/pattyharris/Documents/FlavioCopesBootcamp/AIBootcamp/Week5/src/components/SearchResultsRow.tsx): grouped search result rows with horizontal scroll and highlight support
-- [src/components/RecipeCard.tsx](/Users/pattyharris/Documents/FlavioCopesBootcamp/AIBootcamp/Week5/src/components/RecipeCard.tsx): recipe card presentation and bookmark action
-- [src/components/RecipeModal.tsx](/Users/pattyharris/Documents/FlavioCopesBootcamp/AIBootcamp/Week5/src/components/RecipeModal.tsx): modal for full recipe details
-- [src/lib/storage.ts](/Users/pattyharris/Documents/FlavioCopesBootcamp/AIBootcamp/Week5/src/lib/storage.ts): browser bookmark persistence fallback
-- [src/lib/recipeIdentity.ts](/Users/pattyharris/Documents/FlavioCopesBootcamp/AIBootcamp/Week5/src/lib/recipeIdentity.ts): stable app-side recipe identity generation
-- [server/index.ts](/Users/pattyharris/Documents/FlavioCopesBootcamp/AIBootcamp/Week5/server/index.ts): Express server, API routes, persistence routes, and frontend static serving
-- [server/openai.ts](/Users/pattyharris/Documents/FlavioCopesBootcamp/AIBootcamp/Week5/server/openai.ts): `gpt-4o-mini` recipe generation and `dall-e-3` image generation
-- [server/cache.ts](/Users/pattyharris/Documents/FlavioCopesBootcamp/AIBootcamp/Week5/server/cache.ts): in-memory caching for repeated ingredient searches
-- [server/persistence.ts](/Users/pattyharris/Documents/FlavioCopesBootcamp/AIBootcamp/Week5/server/persistence.ts): Supabase-backed persistence for bookmarks and search history
-- [supabase/schema.sql](/Users/pattyharris/Documents/FlavioCopesBootcamp/AIBootcamp/Week5/supabase/schema.sql): SQL schema for bookmarks and search history tables
-- [src/styles/global.css](/Users/pattyharris/Documents/FlavioCopesBootcamp/AIBootcamp/Week5/src/styles/global.css): Tailwind v4 theme tokens and global typography
+- [`./src/App.tsx`](./src/App.tsx): main app flow, grouped search history, bookmarks, repeat-search refocus behavior, and staged image loading
+- [`./src/components/IngredientInput.tsx`](./src/components/IngredientInput.tsx): ingredient entry UI and starter ingredient chips
+- [`./src/components/SearchResultsRow.tsx`](./src/components/SearchResultsRow.tsx): grouped search result rows with horizontal scroll and highlight support
+- [`./src/components/RecipeCard.tsx`](./src/components/RecipeCard.tsx): recipe card presentation and bookmark action
+- [`./src/components/RecipeModal.tsx`](./src/components/RecipeModal.tsx): modal for full recipe details
+- [`./src/lib/storage.ts`](./src/lib/storage.ts): browser bookmark persistence fallback
+- [`./src/lib/recipeIdentity.ts`](./src/lib/recipeIdentity.ts): stable app-side recipe identity generation
+- [`./server/index.ts`](./server/index.ts): Express server, API routes, persistence routes, and frontend static serving
+- [`./server/openai.ts`](./server/openai.ts): `gpt-4o-mini` recipe generation and `dall-e-3` image generation
+- [`./server/cache.ts`](./server/cache.ts): in-memory caching for repeated ingredient searches
+- [`./server/persistence.ts`](./server/persistence.ts): Supabase-backed persistence for bookmarks and search history
+- [`./supabase/schema.sql`](./supabase/schema.sql): SQL schema for bookmarks and search history tables
+- [`./src/styles/global.css`](./src/styles/global.css): Tailwind v4 theme tokens and global typography
 
 ## Testing Notes
 
