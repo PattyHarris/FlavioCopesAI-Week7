@@ -1,0 +1,57 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600;6..72,700&display=swap");
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", "Segoe UI", sans-serif;
+  --font-display: "Newsreader", Georgia, serif;
+  --color-sage-500: #738a6e;
+  --color-sage-700: #4c5f48;
+  --color-terracotta-500: #bf6b3f;
+  --color-cream-50: #fff8ee;
+  --color-cream-100: #fbf5ea;
+  --color-cream-200: #f3e9d8;
+  --color-ink-900: #2f271b;
+  --color-muted-600: #6f6452;
+  --shadow-card: 0 20px 50px rgba(56, 42, 24, 0.12);
+}
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    min-width: 320px;
+    @apply font-sans text-ink-900;
+    background:
+      radial-gradient(circle at top left, rgba(191, 107, 63, 0.18), transparent 28%),
+      radial-gradient(circle at top right, rgba(115, 138, 110, 0.2), transparent 24%),
+      linear-gradient(180deg, #fbf5ea 0%, #f3e9d8 100%);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-display;
+  }
+
+  button,
+  input {
+    font: inherit;
+  }
+
+  button {
+    @apply cursor-pointer border-0;
+  }
+
+  img {
+    @apply block max-w-full;
+  }
+}
