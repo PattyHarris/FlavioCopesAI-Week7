@@ -6,6 +6,9 @@ type IngredientInputProps = {
   onRemoveIngredient: (value: string) => void;
   onSuggestRecipes: () => void;
   isLoading: boolean;
+  usageLabel: string;
+  canSearch: boolean;
+  onUpgrade: () => void;
 };
 
 const starterIngredients = [
@@ -23,6 +26,9 @@ export function IngredientInput({
   onRemoveIngredient,
   onSuggestRecipes,
   isLoading,
+  usageLabel,
+  canSearch,
+  onUpgrade,
 }: IngredientInputProps) {
   const [draft, setDraft] = useState("");
 
@@ -64,8 +70,8 @@ export function IngredientInput({
           Cook from what you already have
         </h1>
         <p className="mt-4 max-w-md leading-7 text-muted-600">
-          Add ingredients one at a time, then let us build four recipe ideas
-          tailored to your pantry.
+          Add ingredients one at a time, then let us build four recipe ideas tailored to
+          your pantry.
         </p>
       </div>
 
@@ -127,6 +133,21 @@ export function IngredientInput({
             </button>
           ))
         )}
+      </div>
+
+      <div className="mb-4 flex items-center justify-between gap-3 text-sm">
+        <span className="rounded-full bg-terracotta-500/12 px-3 py-2 font-medium text-terracotta-500">
+          {usageLabel}
+        </span>
+        {!canSearch ? (
+          <button
+            className="rounded-full border border-stone-300/80 bg-white px-4 py-2.5 font-medium text-ink-900 transition hover:-translate-y-0.5"
+            type="button"
+            onClick={onUpgrade}
+          >
+            Upgrade to Pro
+          </button>
+        ) : null}
       </div>
 
       <button

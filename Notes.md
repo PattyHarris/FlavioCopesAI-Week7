@@ -1,204 +1,119 @@
-# AI Powered Application
+# Build a Paid Product
 
-## Using Stitch
+This is an extension of Week5. See the file Notes-Week5.md in this folder for notes from that week.
 
-This week we're building a recipe finder application. Flavio started using Stitch. Here's Flavio's initial request for Stitch: "Design a recipe app. I write a few ingredients, and then I click a "suggest recipes" button to get AI generated recipes. I can bookmark a recipe to save it".
+There is a separate Supabase and Render project for this week as well.
 
-I saw several videos on how to use Stitch, one also talks about creating a design system which occurred simply by including the color preference and "dark mode". With the design system in place, you can then more easily change the look and feel.
+As of May of 2026, Dall-e-3 is going to be deprecated. OpenAI suggests that you use gpt-image-1.5 or gpt-image-1-mini instead. I will need to have usage of Dall-e-3 replaced.
 
-Idea for color palette: Sage Green, Soft White, Terracotta/Orange, Beige. Creates a trustworthy and healthy vibe
+## Minimum Requirements
 
-Idea for fonts: Playfair Display (Headings) + Roboto (Body)
+These are the features your app must have. Think of this as your checklist. If your app can do all of these things, you've completed the week. Everything beyond this list is extra.
 
-I also had Stitch ensure the UI adhered to WAGA standards, pretty cool.
+- User authentication with sign-in and sign-out (magic link, OAuth, or email/password)
+- Session persistence so users stay logged in across page loads and browser restarts
+- Protected features that require login (e.g., recipe search shows a login prompt for unauthenticated users)
+- Server-side data storage replacing localStorage, with each record tied to a user ID
+- API routes that check authentication and only return data belonging to the current user
+- A free tier with a usage limit (e.g., 3 free searches)
+- A usage counter visible in the UI (e.g., "2 of 3 free searches")
+- Payment provider integration with a checkout flow for subscribing
+- An upgrade prompt that appears when the user hits the free tier limit
+- A "Pro" indicator (badge, label, or similar) for paying subscribers
+- Subscription cancellation support
+- Tests that verify the app works correctly (UI tests, integration tests, or full end-to-end tests)
 
-See this for how to setup the MCP server: https://stitch.withgoogle.com/docs/mcp/setup
+## Setting up the Polar Sandbox
 
-Also the API key is setup in Stitch settings for the project.
+You can use the sandbox here: https://sandbox.polar.sh (see online documentation). I used my github account as the login mechanism. The sandbox data is automatically removed after 90 days.
 
-# Stitch Instructions from the Export Process
+The Organization field in the setup is "Pantry Chef".
 
-## Stitch Instructions
+## Setting up the Polar MCP
 
-Get the images and code for the following Stitch project's screens:
+There are separate instructions for the Polar MCP for production vs a sandbox. See their website for instructions geared towards using the Codex agent. The data is stored in the ~/.codex/config.toml file in this workspace.
 
-## Project
+NOTE: mcp server setup are NOT set in the workspace folder, e.g. Week5 or here, Week7. They are located under the user login folder, e.g. me. SO, the MCP file for Stitch, e.g. .vscode is located there as well as the .codex folder.
 
-Title: Recipe Finder
-ID: 10431470981106255521
+## Local Storage of Images
 
-## Screens:
+In Week 5, the images were stored in local storage. They disappear after a period of time. From the agent:
 
-1. Home - Pantry Finder (Accessible)
-   ID: 29c55bbde8ab4b839b60f0804345b9c9
+The images disappear because the app is saving temporary OpenAI image URLs, not permanent image files.
 
-2. Recipe Detail (Accessible)
-   ID: 6fa8c7e03a934ca78e118193b725150a
+In server/openai.ts (line 53), generateRecipeImage() calls images.generate() and stores the returned url. Then src/App.tsx (line 290) writes that imageUrl back into the search group, and server/persistence.ts (line 113) persists that URL to Supabase. OpenAI’s image API docs say those URLs are only valid for about 60 minutes, so overnight they expire. That’s why the last search can still be there, but its images no longer load.
 
-3. My Bookmarks (Accessible)
-   ID: fbb4d0b38dea451ca93c14598a38ec95
+There’s a second, smaller reason too: server/openai.ts (line 22) uses an in-memory Map cache, so any backend restart also forgets cached image lookups. But the main overnight issue is the expiring URL.
 
-Use a utility like `curl -L` to download the hosted URLs.
+## Vite reload line on the console
 
-### Test Searches
+The Vite reload line is happening because initialPrompt.md is inside the Vite project root, and something is writing that file repeatedly.
 
-Tomatoes, chickpeas,lemon
-Chocolate, butter, flour, whipping cream, walnuts
-Pasta, tuna
+Your vite.config.ts (line 5) does not exclude markdown files from watching, so when initialPrompt.md changes, Vite logs page reload initialPrompt.md. The app does not import that file, so this is not React doing it; it’s the file watcher noticing disk writes. The usual cause is editor autosave, markdown preview, sync tooling, or an extension repeatedly rewriting the file.
 
-### Testing Delay
+If you want, I can make a small change so Vite ignores initialPrompt.md or all \*.md files during dev.
 
-From AI: Yes, you can test this locally right now. Your current few-second search delay should be enough to notice the new behavior: text cards should appear first, with placeholders saying the image is being generated, and then the photos should populate afterward. If you want to exaggerate the effect, you can also use browser devtools network throttling, but you may not need it. npm run build still passes.
+## Remote vs Local environment setup
 
-## Question on Render and Supabase vs Vercel
+You still need .env.local for secrets and config that your app reads at runtime on your machine during local development.
 
-Yes. For this app, Render + Supabase is a very reasonable deployment choice, and probably the best fit if you want the fewest code changes from the current architecture.
+Even if Supabase and Polar are remote services, your local frontend/backend still need to know:
 
-My recommendation for Pantry Chef right now:
+which Supabase project to talk to
+which keys to use
+which Polar product/token to use
+your OpenAI API key
 
-Supabase for database/auth/storage later, if you want persistent bookmarks, search history, user accounts, or saved recipes.
-Render for the current Express backend, because your app already has a standalone Node server.
-Either Render Static Site or Vercel for the frontend.
-Why I’d lean Render + Supabase for this specific codebase:
+In this project, .env.local is especially useful because:
 
-Your backend is already an Express server, so Render can host it with minimal refactoring.
-AI/image generation can take a few seconds, and a traditional Node service is a comfortable fit for that.
-Supabase is strong if you later want persistent recipe history, bookmarks, auth, and storage.
-This avoids reshaping your backend into a serverless/function-first layout unless you want to.
+the Express server reads OPENAI_API_KEY, SUPABASE_URL, SUPABASE_SECRET_KEY, SUPABASE_PUBLISHABLE_KEY, POLAR_ACCESS_TOKEN, and POLAR_PRODUCT_ID
 
-About Vercel:
+the Vite frontend reads VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY
 
-Vercel is absolutely suitable too, especially for the frontend.
-As of the current official pricing/docs I checked on March 28, 2026, Vercel still has a Hobby plan that is Free forever, and Pro starts at $20/month + additional usage. Source: https://vercel.com/pricing
-Vercel Functions can work for AI workloads, and their docs explicitly mention AI/I/O-bound use cases. Source: https://vercel.com/docs/functions/
-Current function duration docs show Hobby functions with fluid compute can run up to 300s (5 minutes). Source: https://vercel.com/docs/functions/configuring-functions/duration
-The tradeoff with Vercel:
+So “remote” just means the services live elsewhere. Your local app still needs credentials and endpoints to reach them.
 
-It’s best when your app is designed around Vercel’s deployment model.
-Your current app is more naturally a frontend + Express API app than a Vercel-native app.
-So Vercel is great, but it’s not automatically “better” unless you want its frontend workflow and are okay adapting backend deployment style.
-Current pricing signals from official sources:
+If you only deploy and never run locally, then your hosting platform’s environment settings can replace .env.local. But for npm run dev, you’ll want it.
 
-Render: Hobby plan $0/user/month plus compute costs; web services start at $0/month; Starter web service is $7/month. Source: https://render.com/pricing
-Supabase: Free plus paid plans; billing docs currently show Pro/Team usage quotas such as 250 GB egress included, 8 GB DB included, 100 GB storage included, and 2 million Edge Function invocations included before overages. Source: https://supabase.com/docs/guides/platform/billing-on-supabase
-Supabase Edge Functions overage: $2 per 1 million invocations. Source: https://supabase.com/docs/guides/functions/pricing
-Vercel: Hobby free; Pro $20/month + additional usage. Source: https://vercel.com/pricing
-Bottom line:
+## New Polar Sandbox
 
-Best low-friction choice: Render + Supabase
-Best frontend-first polished hosting option: Vercel frontend + Render backend + Supabase
-Best only if you want to refactor more toward Vercel’s model: Vercel + Supabase
+The Polar sandbox product is created as Pantry Chef Pro with product ID 693d7306-a834-4781-8b8a-98a3953676f9 and price ID cd2ed0c2-eaaa-4ba1-b554-7623f3cb3ba0.
 
-If you want, I can next give you a concrete deployment recommendation matrix for this project:
+POLAR_ACCESS_TOKEN is an Organization Access Token. In Polar, go to your organization’s dashboard, then Settings > General, scroll to Developers, and click New Token. Polar’s docs say OATs are created in organization settings and should be kept private: https://polar.sh/docs/integrate/oat
 
-    - cheapest setup
-    - easiest setup
-    - best production-ready setup
+For sandbox, the base API URL is https://sandbox-api.polar.sh/v1. Polar also notes sandbox is fully isolated from production, so you need a separate sandbox token there.
 
-## Local vs Remote
+## Cleanup Queries
 
-See Readme but in essence: So the switch is entirely env-based. There isn’t a separate command for “local backend vs Supabase” right now.
+1. Find the user
 
-For record keeping, the quick rule is:
+   select id, email, created_at
+   from auth.users
+   where email = 'your-test-email@example.com';
 
-no Supabase env vars = local fallback mode
-Supabase env vars present = local backend with Supabase persistence
+2. Reset the use's app data
 
-## Notes for Discord
+   delete from bookmarks
+   where user_id = (
+   select id
+   from auth.users
+   where email = 'your-test-email@example.com'
+   );
 
-As others have done, I used Stitches to design the application but ran into a few communication issues with the Agent when trying to get the Agent to use the Stitches design directly. In fact, one of the TODO's mentioned by the Agent for improvement was to use the Stitches design directly. Funny. I like using VSCode and again used GPT-5.4.
+   delete from search_history
+   where user_id = (
+   select id
+   from auth.users
+   where email = 'your-test-email@example.com'
+   );
 
-Stack:
+3. If you also want to clear shared caches for a cleaner retest:
 
-- React 18
-- TypeScript
-- Vite
-- Tailwind CSS v4
-- Express
-- OpenAI GPT-4o-mini
-- DALL-E 3
+   delete from recipe_cache;
+   delete from recipe_images;
 
-Remote Deployment:
+4. And for the auth account itself, use the Supabase UI:
 
-- Render
-- Supabase
-
-The application performs all of the basic features.
-
-## Debugging
-
-One issue that took several tries was a problem where a bookmarked item's image was replaced by the last search result viewed. Last change:
-
-I tightened the recipe identity logic again in src/lib/recipeIdentity.ts.
-
-Before, the app was deriving its internal id from only:
-
-title
-cook time
-ingredients
-That still allowed collisions for recipes that looked broadly similar.
-
-Now the internal id is based on a hashed fingerprint of the full recipe content:
-
-title
-description
-cook time
-difficulty
-ingredients
-instructions
-That should make cross-search image bleed much less likely, and in practice it should eliminate the case you described unless two recipes are effectively identical.
-
-npm run build still passes.
-
-For the next test, I’d use exactly the same sequence as before. If it still happens after this change, then yes, the next useful debugging step would be for me to add a temporary on-screen/debug-console print of:
-
-bookmark recipe id
-current search recipe id
-image update target id
-But I’d try this stronger fix first.
-
-### More Debugging
-
-That last change didn't fix it:
-
-don’t think stale database rows are the main issue here.
-
-I changed the behavior so search-result image updates no longer modify bookmarks at all. Instead:
-
-search rows manage their own image loading
-bookmarks manage their own image loading when you save them
-later searches should no longer be able to overwrite a saved bookmark’s image
-The key change is in src/App.tsx:
-
-removed bookmark updates from updateRecipeImageInGroups()
-added a dedicated loadBookmarkImage() path for newly bookmarked recipes
-npm run build passes.
-
-So for your next test:
-
-clear bookmarks
-clear search history
-bookmark a recipe
-run another search
-open a different result
-go back to bookmarks
-If it still happens after this change, then yes, the next step should be active debugging. At that point I’d add temporary logging showing:
-
-bookmark id/title/imageUrl
-opened search result id/title/imageUrl
-every image update target
-whether the update path is search group or bookmark
-But this fix is a cleaner architectural separation, so I’d test this first.
-
-This last change fixed the issue.
-
-## Show Duplicate Results
-
-Asked the Agent about that problem and it suggested that it make a change:
-
-Now when you run the exact same ingredient search again:
-
-the existing search row is moved to the top
-it gets briefly highlighted
-the page scrolls back to that row
-no duplicate row is created
+   Authentication > Users
+   find your-test-email@example.com
+   delete the user there
+   That gives you a nearly full fresh-start test for that email.

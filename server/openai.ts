@@ -19,8 +19,6 @@ const recipeSchema = z.object({
     .length(4),
 });
 
-const imageCache = new Map<string, string | undefined>();
-
 let client: OpenAI | null = null;
 
 function getClient() {
@@ -48,30 +46,30 @@ function buildRecipePrompt(ingredients: string[]) {
   ].join(" ");
 }
 
-function getImageCacheKey(recipe: Pick<Recipe, "title" | "description">) {
+export function getImageCacheKey(recipe: Pick<Recipe, "title" | "description">) {
   return `${recipe.title.trim().toLowerCase()}|${recipe.description.trim().toLowerCase()}`;
 }
 
-export async function generateRecipeImage(recipe: Pick<Recipe, "title" | "description">) {
-  const cacheKey = getImageCacheKey(recipe);
-  if (imageCache.has(cacheKey)) {
-    return imageCache.get(cacheKey);
-  }
-
+export async function generateRecipeImageBuffer(
+  recipe: Pick<Recipe, "title" | "description">,
+) {
   try {
     const response = await getClient().images.generate({
-      model: "dall-e-3",
+      model: "gpt-image-1-mini" as unknown as "gpt-image-1",
       prompt: `A plated food photograph of ${recipe.title}. ${recipe.description}. Warm natural light, realistic editorial cooking style.`,
       n: 1,
-      quality: "standard",
       size: "1024x1024",
+      quality: "low",
+      output_format: "webp",
     });
 
-    const imageUrl = response.data?.[0]?.url;
-    imageCache.set(cacheKey, imageUrl);
-    return imageUrl;
+    const encodedImage = response.data?.[0]?.b64_json;
+    if (!encodedImage) {
+      return undefined;
+    }
+
+    return Buffer.from(encodedImage, "base64");
   } catch {
-    imageCache.set(cacheKey, undefined);
     return undefined;
   }
 }

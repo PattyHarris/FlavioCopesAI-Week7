@@ -11,19 +11,48 @@ export type Recipe = {
   imageUrl?: string;
 };
 
+export type RecipeSearchGroup = {
+  id: string;
+  ingredients: string[];
+  cached: boolean;
+  recipes: Recipe[];
+  createdAt: number;
+};
+
+export type UsageSnapshot = {
+  freeLimit: number;
+  usedSearches: number;
+};
+
+export type SubscriptionState = {
+  enabled: boolean;
+  pro: boolean;
+  productId: string | null;
+  subscriptionId: string | null;
+  cancelAtPeriodEnd: boolean;
+  currentPeriodEnd: string | null;
+  managementEnabled: boolean;
+};
+
+export type AppUser = {
+  id: string;
+  email: string | null;
+};
+
+export type AppStateResponse = {
+  authEnabled: boolean;
+  user: AppUser | null;
+  bookmarks: Recipe[];
+  searchHistory: RecipeSearchGroup[];
+  subscription: SubscriptionState;
+  usage: UsageSnapshot;
+};
+
 export type RecipeResponse = {
   ingredients: string[];
   recipes: Recipe[];
   cached: boolean;
-};
-
-export type RecipeSearchGroup = RecipeResponse & {
-  id: string;
-  createdAt: number;
-};
-
-export type PersistenceStateResponse = {
-  enabled: boolean;
-  bookmarks: Recipe[];
-  searchHistory: RecipeSearchGroup[];
+  historyGroup: RecipeSearchGroup;
+  usage: UsageSnapshot;
+  subscription: SubscriptionState;
 };

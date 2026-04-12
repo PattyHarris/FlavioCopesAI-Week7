@@ -4,17 +4,35 @@ import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { normalizeIngredients, readRecipeCache, writeRecipeCache } from "./cache.js";
-import { generateRecipeImage, generateRecipes } from "./openai.js";
+import {
+  attachCurrentUser,
+  clearAuthCookies,
+  isSupabaseAuthEnabled,
+  requireAuthenticatedUser,
+  setAuthCookies,
+  type AuthenticatedRequest,
+} from "./auth.js";
+import { generateRecipes } from "./openai.js";
 import {
   clearBookmarksPersistence,
   clearSearchHistoryPersistence,
-  getPersistenceState,
+  createBookmark,
+  deleteBookmark,
+  getAppStateForUser,
+  getRecipeCacheEntry,
+  getRecipeImageUrl,
+  getUsageSnapshot,
   isPersistenceEnabled,
-  replaceBookmarks,
-  upsertSearchHistoryGroup,
+  recordSearchHistoryGroup,
+  storeRecipeCache,
+  updateSearchHistoryGroup,
 } from "./persistence.js";
-import { RecipeResponse } from "./types.js";
+import {
+  cancelSubscriptionAtPeriodEnd,
+  createCheckoutSession,
+  getSubscriptionStatus,
+} from "./polar.js";
+import type { RecipeResponse } from "./types.js";
 
 dotenv.config();
 dotenv.config({ path: ".env.local", override: true });
@@ -29,6 +47,17 @@ const projectRoot = path.resolve(serverDirectory, "..");
 const frontendDistDirectory = path.resolve(projectRoot, "dist");
 const frontendIndexFile = path.resolve(frontendDistDirectory, "index.html");
 
+const recipeSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  description: z.string().min(1),
+  cookTime: z.string().min(1),
+  difficulty: z.enum(["Easy", "Medium", "Hard"]),
+  ingredients: z.array(z.string().min(1)),
+  instructions: z.array(z.string().min(1)),
+  imageUrl: z.string().optional(),
+});
+
 const requestSchema = z.object({
   ingredients: z.array(z.string().min(1)).min(1),
 });
@@ -38,19 +67,13 @@ const imageRequestSchema = z.object({
   description: z.string().min(1),
 });
 
-const bookmarksSchema = z.object({
-  bookmarks: z.array(
-    z.object({
-      id: z.string().min(1),
-      title: z.string().min(1),
-      description: z.string().min(1),
-      cookTime: z.string().min(1),
-      difficulty: z.enum(["Easy", "Medium", "Hard"]),
-      ingredients: z.array(z.string().min(1)),
-      instructions: z.array(z.string().min(1)),
-      imageUrl: z.string().optional(),
-    }),
-  ),
+const sessionSchema = z.object({
+  accessToken: z.string().min(1),
+  refreshToken: z.string().optional(),
+});
+
+const bookmarkCreateSchema = z.object({
+  recipe: recipeSchema,
 });
 
 const searchHistoryGroupSchema = z.object({
@@ -58,38 +81,66 @@ const searchHistoryGroupSchema = z.object({
     id: z.string().min(1),
     ingredients: z.array(z.string().min(1)),
     cached: z.boolean(),
-    recipes: z.array(
-      z.object({
-        id: z.string().min(1),
-        title: z.string().min(1),
-        description: z.string().min(1),
-        cookTime: z.string().min(1),
-        difficulty: z.enum(["Easy", "Medium", "Hard"]),
-        ingredients: z.array(z.string().min(1)),
-        instructions: z.array(z.string().min(1)),
-        imageUrl: z.string().optional(),
-      }),
-    ),
+    recipes: z.array(recipeSchema),
     createdAt: z.number(),
   }),
 });
 
-app.use(cors());
-app.use(express.json({ limit: "1mb" }));
+app.use(
+  cors({
+    credentials: true,
+    origin: true,
+  }),
+);
+app.use(express.json({ limit: "2mb" }));
+app.use(attachCurrentUser as express.RequestHandler);
+
+function getRequestOrigin(request: express.Request) {
+  const forwardedProto = request.headers["x-forwarded-proto"];
+  const protocol =
+    typeof forwardedProto === "string" ? forwardedProto : request.protocol || "http";
+
+  return `${protocol}://${request.get("host")}`;
+}
 
 app.get("/api/health", (_request, response) => {
-  response.json({ ok: true, persistenceEnabled: isPersistenceEnabled() });
+  response.json({
+    ok: true,
+    persistenceEnabled: isPersistenceEnabled(),
+    authEnabled: isSupabaseAuthEnabled(),
+  });
 });
 
-app.get("/api/state", async (_request, response) => {
+app.get("/api/state", async (request, response) => {
+  const authRequest = request as AuthenticatedRequest;
+
   try {
-    const state = await getPersistenceState();
+    const state = await getAppStateForUser(
+      authRequest.currentUser,
+      authRequest.authTokens?.accessToken || null,
+    );
     response.json(state);
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Unable to load persistence state.";
+    const message = error instanceof Error ? error.message : "Unable to load app state.";
     response.status(500).json({ error: message });
   }
+});
+
+app.post("/api/auth/session", (request, response) => {
+  const parsed = sessionSchema.safeParse(request.body);
+
+  if (!parsed.success) {
+    response.status(400).json({ error: "Please send accessToken and refreshToken." });
+    return;
+  }
+
+  setAuthCookies(response, parsed.data);
+  response.json({ ok: true });
+});
+
+app.post("/api/auth/sign-out", (_request, response) => {
+  clearAuthCookies(response);
+  response.json({ ok: true });
 });
 
 app.post("/api/recipes/suggest", async (request, response) => {
@@ -100,27 +151,58 @@ app.post("/api/recipes/suggest", async (request, response) => {
     return;
   }
 
-  const ingredients = normalizeIngredients(parsed.data.ingredients);
-  const cached = readRecipeCache(ingredients);
-
-  if (cached) {
-    response.json({ ...cached, cached: true });
+  const auth = requireAuthenticatedUser(request as AuthenticatedRequest, response);
+  if (!auth) {
     return;
   }
 
   try {
-    const recipes = await generateRecipes(ingredients);
-    const payload: RecipeResponse = {
-      ingredients,
-      recipes,
-      cached: false,
-    };
+    const subscription = await getSubscriptionStatus(auth.user);
+    const usage = await getUsageSnapshot(auth.accessToken);
 
-    writeRecipeCache(payload);
-    response.json(payload);
+    if (!subscription.pro && usage.usedSearches >= usage.freeLimit) {
+      response.status(402).json({
+        error: "You have reached your free recipe limit.",
+        code: "subscription_required",
+        usage,
+        subscription,
+      });
+      return;
+    }
+
+    const cached = await getRecipeCacheEntry(parsed.data.ingredients);
+    let recipePayload: RecipeResponse;
+
+    if (cached) {
+      recipePayload = cached;
+    } else {
+      const recipes = await generateRecipes(parsed.data.ingredients);
+      recipePayload = {
+        ingredients: parsed.data.ingredients,
+        recipes,
+        cached: false,
+      };
+      await storeRecipeCache(recipePayload);
+    }
+
+    const historyGroup = await recordSearchHistoryGroup(auth.accessToken, auth.user.id, {
+      ingredients: recipePayload.ingredients,
+      cached: recipePayload.cached,
+      recipes: recipePayload.recipes,
+      createdAt: Date.now(),
+    });
+
+    response.json({
+      ...recipePayload,
+      historyGroup,
+      usage: {
+        freeLimit: usage.freeLimit,
+        usedSearches: usage.usedSearches + 1,
+      },
+      subscription,
+    });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Unable to generate recipes.";
+    const message = error instanceof Error ? error.message : "Unable to generate recipes.";
     response.status(500).json({ error: message });
   }
 });
@@ -134,45 +216,100 @@ app.post("/api/recipes/image", async (request, response) => {
   }
 
   try {
-    const imageUrl = await generateRecipeImage(parsed.data);
+    const imageUrl = await getRecipeImageUrl(parsed.data);
     response.json({ imageUrl: imageUrl ?? null });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Unable to generate recipe image.";
+    const message = error instanceof Error ? error.message : "Unable to generate recipe image.";
     response.status(500).json({ error: message });
   }
 });
 
-app.put("/api/bookmarks", async (request, response) => {
-  const parsed = bookmarksSchema.safeParse(request.body);
-
-  if (!parsed.success) {
-    response.status(400).json({ error: "Please send a bookmarks array." });
+app.get("/api/bookmarks", async (request, response) => {
+  const auth = requireAuthenticatedUser(request as AuthenticatedRequest, response);
+  if (!auth) {
     return;
   }
 
   try {
-    const result = await replaceBookmarks(parsed.data.bookmarks);
-    response.json(result);
+    const state = await getAppStateForUser(auth.user, auth.accessToken);
+    response.json({ bookmarks: state.bookmarks });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Unable to save bookmarks.";
+    const message = error instanceof Error ? error.message : "Unable to load bookmarks.";
     response.status(500).json({ error: message });
   }
 });
 
-app.delete("/api/bookmarks", async (_request, response) => {
+app.post("/api/bookmarks", async (request, response) => {
+  const parsed = bookmarkCreateSchema.safeParse(request.body);
+
+  if (!parsed.success) {
+    response.status(400).json({ error: "Please send a valid recipe." });
+    return;
+  }
+
+  const auth = requireAuthenticatedUser(request as AuthenticatedRequest, response);
+  if (!auth) {
+    return;
+  }
+
   try {
-    const result = await clearBookmarksPersistence();
-    response.json(result);
+    await createBookmark(auth.accessToken, auth.user.id, parsed.data.recipe);
+    response.json({ ok: true });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Unable to clear bookmarks.";
+    const message = error instanceof Error ? error.message : "Unable to save bookmark.";
     response.status(500).json({ error: message });
   }
 });
 
-app.put("/api/search-history", async (request, response) => {
+app.delete("/api/bookmarks/:recipeId", async (request, response) => {
+  const auth = requireAuthenticatedUser(
+    request as unknown as AuthenticatedRequest,
+    response,
+  );
+  if (!auth) {
+    return;
+  }
+
+  try {
+    await deleteBookmark(auth.accessToken, request.params.recipeId);
+    response.json({ ok: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to delete bookmark.";
+    response.status(500).json({ error: message });
+  }
+});
+
+app.delete("/api/bookmarks", async (request, response) => {
+  const auth = requireAuthenticatedUser(request as AuthenticatedRequest, response);
+  if (!auth) {
+    return;
+  }
+
+  try {
+    await clearBookmarksPersistence(auth.accessToken);
+    response.json({ ok: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to clear bookmarks.";
+    response.status(500).json({ error: message });
+  }
+});
+
+app.get("/api/history", async (request, response) => {
+  const auth = requireAuthenticatedUser(request as AuthenticatedRequest, response);
+  if (!auth) {
+    return;
+  }
+
+  try {
+    const state = await getAppStateForUser(auth.user, auth.accessToken);
+    response.json({ searchHistory: state.searchHistory, usage: state.usage });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to load search history.";
+    response.status(500).json({ error: message });
+  }
+});
+
+app.post("/api/history", async (request, response) => {
   const parsed = searchHistoryGroupSchema.safeParse(request.body);
 
   if (!parsed.success) {
@@ -180,23 +317,87 @@ app.put("/api/search-history", async (request, response) => {
     return;
   }
 
+  const auth = requireAuthenticatedUser(request as AuthenticatedRequest, response);
+  if (!auth) {
+    return;
+  }
+
   try {
-    const result = await upsertSearchHistoryGroup(parsed.data.group);
-    response.json(result);
+    await updateSearchHistoryGroup(auth.accessToken, auth.user.id, parsed.data.group);
+    response.json({ ok: true });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Unable to save search history.";
+    const message = error instanceof Error ? error.message : "Unable to update search history.";
     response.status(500).json({ error: message });
   }
 });
 
-app.delete("/api/search-history", async (_request, response) => {
+app.post("/api/history/clear", async (request, response) => {
+  const auth = requireAuthenticatedUser(request as AuthenticatedRequest, response);
+  if (!auth) {
+    return;
+  }
+
   try {
-    const result = await clearSearchHistoryPersistence();
-    response.json(result);
+    await clearSearchHistoryPersistence(auth.accessToken);
+    response.json({ ok: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to clear search history.";
+    response.status(500).json({ error: message });
+  }
+});
+
+app.get("/api/subscription", async (request, response) => {
+  const auth = requireAuthenticatedUser(request as AuthenticatedRequest, response);
+  if (!auth) {
+    return;
+  }
+
+  try {
+    const subscription = await getSubscriptionStatus(auth.user);
+    const usage = await getUsageSnapshot(auth.accessToken);
+    response.json({ subscription, usage });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Unable to clear search history.";
+      error instanceof Error ? error.message : "Unable to load subscription status.";
+    response.status(500).json({ error: message });
+  }
+});
+
+app.post("/api/checkout", async (request, response) => {
+  const auth = requireAuthenticatedUser(request as AuthenticatedRequest, response);
+  if (!auth) {
+    return;
+  }
+
+  try {
+    const checkout = await createCheckoutSession(auth.user, getRequestOrigin(request));
+    response.json(checkout);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to create checkout session.";
+    response.status(500).json({ error: message });
+  }
+});
+
+app.post("/api/subscription/cancel", async (request, response) => {
+  const auth = requireAuthenticatedUser(request as AuthenticatedRequest, response);
+  if (!auth) {
+    return;
+  }
+
+  try {
+    const subscription = await getSubscriptionStatus(auth.user);
+
+    if (!subscription.subscriptionId) {
+      response.status(400).json({ error: "No active subscription found." });
+      return;
+    }
+
+    await cancelSubscriptionAtPeriodEnd(subscription.subscriptionId);
+    response.json({ ok: true });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to schedule cancellation.";
     response.status(500).json({ error: message });
   }
 });

@@ -1,6 +1,15 @@
-# Pantry Chef
+# Pantry Chef - Week 7
 
-AI-powered recipe suggestion app built with `React`, `TypeScript`, `Vite`, `Tailwind CSS v4`, `Express`, `OpenAI`, and optional `Supabase` persistence.
+Pantry Chef is now an authenticated, paid recipe app built with `React`, `TypeScript`, `Vite`, `Express`, `Supabase Auth`, `Supabase Storage`, `OpenAI`, and `Polar`.
+
+## What Changed From Week 5
+
+- Added magic-link authentication with Supabase Auth.
+- Moved bookmarks and search history to server-backed per-user APIs.
+- Added shared Supabase-backed recipe caching and recipe image caching.
+- Replaced image generation with `gpt-image-1-mini`.
+- Added a free tier with `3` searches per account.
+- Added Polar checkout, Pro status refresh, and cancel-at-period-end subscription management.
 
 ## Stack
 
@@ -9,51 +18,57 @@ AI-powered recipe suggestion app built with `React`, `TypeScript`, `Vite`, `Tail
 - `Vite`
 - `Tailwind CSS v4`
 - `Express`
-- `OpenAI GPT-4o-mini`
-- `DALL-E 3`
-- `Supabase` for optional bookmarks and search-history persistence
+- `OpenAI gpt-4o-mini`
+- `OpenAI gpt-image-1-mini`
+- `Supabase Auth`
+- `Supabase Postgres`
+- `Supabase Storage`
+- `Polar`
 
-## Local Setup
+## Required Environment Variables
 
-1. Create an environment file.
-
-You can either:
-
-- copy [`./.env.example`](./.env.example) to `.env.local`
-- or keep using the existing `.env.api.key`
-
-2. Add your OpenAI key.
-
-The backend reads:
+Server:
 
 - `OPENAI_API_KEY`
-- or `OPEN_AI_API_KEY`
+- `SUPABASE_URL`
+- `SUPABASE_PUBLISHABLE_KEY`
+- `SUPABASE_SECRET_KEY`
 
-Optional variables:
+Client:
 
-- `PORT` defaults to `8787`
-- `HOST` defaults automatically based on environment
-- `STITCH_API_KEY` is not required for the current app flow
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_PUBLISHABLE_KEY`
 
-3. Install dependencies:
+Payments:
+
+- `POLAR_ACCESS_TOKEN`
+- `POLAR_PRODUCT_ID`
+- `POLAR_SERVER` defaults to `sandbox`
+
+The included `.env.example` has the full template.
+
+## Supabase Setup
+
+1. Run [`supabase/schema.sql`](/Users/pattyharris/Documents/FlavioCopesBootcamp/AIBootcamp/Week7/supabase/schema.sql:1) in the Supabase SQL editor.
+2. In Supabase Auth, enable magic-link/email OTP sign-in.
+3. Set your site URL and redirect URL to your local app origin, for example `http://localhost:5173`.
+4. Make sure the `recipe-images` storage bucket exists after running the SQL.
+
+## Polar Setup
+
+The sandbox product for this project has already been created:
+
+- Product: `Pantry Chef Pro`
+- Product ID: `693d7306-a834-4781-8b8a-98a3953676f9`
+- Price ID: `cd2ed0c2-eaaa-4ba1-b554-7623f3cb3ba0`
+- Price: `$9/month`
+
+Set `POLAR_PRODUCT_ID=693d7306-a834-4781-8b8a-98a3953676f9` in your local env when you want the app to use that sandbox product.
+
+## Install And Run
 
 ```bash
 npm install
-```
-
-4. Optional for Supabase-backed persistence:
-
-- run [`./supabase/schema.sql`](./supabase/schema.sql) in the Supabase SQL editor
-- set `SUPABASE_URL`
-- set `SUPABASE_SECRET_KEY`
-
-If those Supabase keys are not set, the app falls back to browser bookmarks and local runtime search history.
-
-## Run Locally
-
-Start the frontend and backend together:
-
-```bash
 npm run dev
 ```
 
@@ -62,188 +77,36 @@ Local URLs:
 - Frontend: `http://localhost:5173`
 - Backend health check: `http://127.0.0.1:8787/api/health`
 
-## Run Frontend And Backend Separately
+## Main API Routes
 
-Frontend only:
+- `GET /api/state`
+- `POST /api/auth/session`
+- `POST /api/auth/sign-out`
+- `POST /api/recipes/suggest`
+- `POST /api/recipes/image`
+- `GET/POST/DELETE /api/bookmarks`
+- `DELETE /api/bookmarks/:recipeId`
+- `GET/POST /api/history`
+- `POST /api/history/clear`
+- `GET /api/subscription`
+- `POST /api/checkout`
+- `POST /api/subscription/cancel`
 
-```bash
-npm run dev:client
-```
+## Current Product Behavior
 
-Backend only:
+- Unauthenticated users are prompted to sign in before searching.
+- Free users can run `3` recipe searches.
+- The usage counter appears next to the search button.
+- Pro users see a `Pro` badge in the nav and `Pro ∞` in the counter.
+- Search history and bookmarks are tied to the signed-in user.
+- Recipe suggestions are cached across users in Supabase.
+- Generated recipe images are stored in Supabase Storage and reused.
+- Subscription status is fetched directly from Polar without webhooks.
 
-```bash
-npm run dev:server
-```
+## Build Verification
 
-## Run With Or Without Supabase
-
-### With Supabase persistence
-
-Set:
-
-- `SUPABASE_URL`
-- `SUPABASE_SECRET_KEY`
-
-Then run:
-
-```bash
-npm run dev
-```
-
-In this mode:
-
-- bookmarks persist in Supabase
-- search history persists in Supabase
-- the local backend still runs on your machine
-
-### Without Supabase persistence
-
-Leave these unset:
-
-- `SUPABASE_URL`
-- `SUPABASE_SECRET_KEY`
-- `SUPABASE_PUBLISHABLE_KEY`
-
-Then run:
-
-```bash
-npm run dev
-```
-
-In this mode:
-
-- bookmarks fall back to browser `localStorage`
-- search history falls back to local runtime memory
-- no Supabase reads or writes are attempted
-
-## Production Verification
-
-Build the app locally:
+Verified locally with:
 
 ```bash
 npm run build
 ```
-
-Run the built backend:
-
-```bash
-npm start
-```
-
-## Deployment
-
-### Render
-
-Current Render settings for this codebase:
-
-- Root Directory: repo root
-- Environment: `Node`
-- Build Command: `npm install && npm run build`
-- Start Command: `npm start`
-
-Required Render env vars:
-
-- `OPENAI_API_KEY`
-
-Optional Render env vars:
-
-- `OPEN_AI_API_KEY`
-- `STITCH_API_KEY`
-- `SUPABASE_URL`
-- `SUPABASE_SECRET_KEY`
-- `SUPABASE_PUBLISHABLE_KEY`
-
-Notes:
-
-- do not set `HOST=127.0.0.1` on Render
-- the server now defaults to `0.0.0.0` in hosted environments
-- Render provides `PORT`, so you usually do not need to set it manually
-
-### Supabase
-
-To enable persistence for bookmarks and search history:
-
-1. Run [`./supabase/schema.sql`](./supabase/schema.sql)
-2. Set:
-   - `SUPABASE_URL`
-   - `SUPABASE_SECRET_KEY`
-
-`SUPABASE_PUBLISHABLE_KEY` is included in the env template for future use, but the current backend persistence path only requires `SUPABASE_URL` and `SUPABASE_SECRET_KEY`.
-
-## Current Application Behavior
-
-- ingredients are entered one at a time as tags
-- recipe suggestions are generated by the backend
-- each successful search creates a grouped result row by ingredient set
-- repeat searches for the exact same normalized ingredient set move the existing row to the top instead of creating a duplicate
-- grouped result rows can be scrolled horizontally with arrow controls
-- recipe text loads first, while images load afterward in the background
-- bookmarks are separate from search history
-- clearing search history does not remove bookmarks
-- clearing bookmarks does not remove search history
-
-## How GPT-4o-mini Is Used
-
-The frontend does not call OpenAI directly. Instead:
-
-- the React app sends the current ingredient list to the backend route `/api/recipes/suggest`
-- the Express backend calls `gpt-4o-mini` to generate recipe content
-- the model is asked to return JSON only, not free-form text
-- the response is constrained to exactly 4 recipes using a JSON schema
-- the server validates the returned JSON with `zod` before sending it back to the frontend
-
-Each recipe includes:
-
-- `id`
-- `title`
-- `description`
-- `cookTime`
-- `difficulty`
-- `ingredients`
-- `instructions`
-
-After the recipes are generated, the backend attempts to create recipe images using `dall-e-3`, but the UI is designed so text results can appear before image generation completes.
-
-## File Guide
-
-- [`./src/App.tsx`](./src/App.tsx): main app flow, grouped search history, bookmarks, repeat-search refocus behavior, and staged image loading
-- [`./src/components/IngredientInput.tsx`](./src/components/IngredientInput.tsx): ingredient entry UI and starter ingredient chips
-- [`./src/components/SearchResultsRow.tsx`](./src/components/SearchResultsRow.tsx): grouped search result rows with horizontal scroll and highlight support
-- [`./src/components/RecipeCard.tsx`](./src/components/RecipeCard.tsx): recipe card presentation and bookmark action
-- [`./src/components/RecipeModal.tsx`](./src/components/RecipeModal.tsx): modal for full recipe details
-- [`./src/lib/storage.ts`](./src/lib/storage.ts): browser bookmark persistence fallback
-- [`./src/lib/recipeIdentity.ts`](./src/lib/recipeIdentity.ts): stable app-side recipe identity generation
-- [`./server/index.ts`](./server/index.ts): Express server, API routes, persistence routes, and frontend static serving
-- [`./server/openai.ts`](./server/openai.ts): `gpt-4o-mini` recipe generation and `dall-e-3` image generation
-- [`./server/cache.ts`](./server/cache.ts): in-memory caching for repeated ingredient searches
-- [`./server/persistence.ts`](./server/persistence.ts): Supabase-backed persistence for bookmarks and search history
-- [`./supabase/schema.sql`](./supabase/schema.sql): SQL schema for bookmarks and search history tables
-- [`./src/styles/global.css`](./src/styles/global.css): Tailwind v4 theme tokens and global typography
-
-## Testing Notes
-
-Validated during development:
-
-- local frontend and backend startup
-- production build via `npm run build`
-- Render deployment fixes for host binding and static frontend serving
-- Supabase persistence for bookmarks and search history
-- clearing bookmarks
-- clearing search history
-- staged text-first, image-later recipe loading
-- repeat-search refocus behavior
-- bookmarked-image overwrite bug fix across later searches
-
-## Known Issues / Current Limitations
-
-- recipe response caching is still in-memory only, so cached AI results are lost when the backend restarts
-- recipe image generation depends on `dall-e-3`; if image creation fails, recipes still render without images
-- the Stitch-exported screens and assets were not directly imported, so the final UI is an approximation rather than a literal Stitch export
-- persistence currently covers bookmarks and search history, but not full server-side user accounts or multi-user ownership rules
-
-## Notes
-
-- the OpenAI API key is only used on the server and is never exposed to the browser
-- the frontend calls the backend through the Vite dev proxy using `/api` during local development
-- the deployed Express server also serves the built frontend in production

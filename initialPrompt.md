@@ -1,52 +1,44 @@
-Build me an AI-powered recipe suggestion app. I type the ingredients I have, and it suggests recipes I can make with them.
+# Starter Prompt
 
-Core features:
+I have a working Recipe Finder app call Pantry Chef that uses AI to suggest recipes from ingredients. It currently uses a Supabase backend to store bookmarks and search history. There is no user accounts.
 
-- An input where I add ingredients one at a time (as tags)
-- A "Suggest Recipes" button that sends my ingredients to the server
-- The server calls an AI language model (OpenAI GPT-4o-mini or similar) and asks for exactly 4 recipes
-- The AI must return structured JSON (not free text) with: id, title, description, cookTime, difficulty, ingredients list, and instructions list
-- Display recipes as cards with title, description, cook time, and difficulty badge
-- Click a recipe card to see the full ingredient list and step-by-step instructions in a modal
-- Bookmark recipes to save them (use localStorage)
-- Cache AI responses so the same ingredient combination doesn't trigger another API call
+I want to turn it into a paid product.
 
-The app should call the AI from server-side code only (never expose the API key in the browser). Store the API key in an environment variable.
+## Changes for this project
 
-Make it clean and usable. This is a cooking tool, not a demo.
+Here's what I need, in this order:
 
-Use the following instructions for the user interface:
+1. UPDATE IMAGE GENERATION
+   - dall-e-3 is being deprecated soon.
+   - Replace usage of dall-e-3 with gpt-image-1-mini
 
-## Stitch Instructions
+2. AUTHENTICATION
+   - Add magic link sign-in using Supabase Auth
+   - Create a server-side client that reads auth from cookies
+   - Add middleware that attaches the current user to every request
+   - Add a "Sign in" button in the nav that opens a login modal
+   - When an unauthenticated user tries to search for recipes, show the login modal instead
+   - Show the user's email and a "Sign out" button when logged in
 
-Get the images and code for the following Stitch project's screens:
+3. MOVE DATA TO SERVER
+   - Create database tables for: bookmarks (per user), search_history (per user), recipe_cache (shared), recipe_images (shared)
+   - Add user_id columns to bookmarks and search_history, with foreign keys to the auth users table
+   - Enable Row Level Security so users can only access their own data - Supabase is currently setup with RLS.
+   - Create API routes: GET/POST/DELETE /api/bookmarks, GET/POST /api/history, POST /api/history/clear
+   - Replace all localStorage calls with fetch() to these API routes
+   - Move image caching from filesystem to Supabase Storage
 
-### Project
+4. ADD PAYMENTS
+   - Integrate a payment provide. I have added the Polar mcp server setup file in ~/.code/config.toml and have run the following command: codex mcp login polar_sandbox
+   - Create a product with a monthly subscription price
+   - Add a free tier: 3 recipe searches per account
+   - Show a usage counter next to the search button: "2 of 3 free searches"
+   - When the limit is reached, show an upgrade prompt with a checkout button
+   - The checkout button creates a session and redirects to the payment provider's checkout page
+   - After payment, redirect back to the app and refresh subscription status
+   - Show a "Pro" badge in the nav for subscribers, and "Pro ∞" in the usage counter
+   - Add subscription cancellation (set cancelAtPeriodEnd, don't cancel immediately)
 
-Title: Recipe Finder
-ID: 10431470981106255521
+Check subscription status by querying the payment provider's API directly (no webhooks needed for v1).
 
-### Screens:
-
-1. Home - Pantry Finder (Accessible)
-   ID: 29c55bbde8ab4b839b60f0804345b9c9
-
-2. Recipe Detail (Accessible)
-   ID: 6fa8c7e03a934ca78e118193b725150a
-
-3. My Bookmarks (Accessible)
-   ID: fbb4d0b38dea451ca93c14598a38ec95
-
-Use a utility like `curl -L` to download the hosted URLs.
-
-## Technical Stack
-
-Use React and Typescript. Use DALL-E 3 for photograph generation and GPT-4o-mini recipe generation.
-
-## Initial Testing
-
-The frontend and backend will be initially tested locally.
-
-### Data Format
-
-The data returned for the recipe generation should be in JSON format.
+Keep the existing recipe search, bookmarks, and history features working. The app should feel the same to the user, just with accounts and a payment gate added on top.

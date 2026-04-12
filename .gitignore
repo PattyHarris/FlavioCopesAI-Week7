@@ -7,4 +7,4 @@ dist-server
 .env.*.local
 .env.api.key
 .DS_Store
-.vscode
+
