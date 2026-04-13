@@ -17,6 +17,7 @@ import type {
 
 type View = "discover" | "bookmarks";
 type ImageState = "idle" | "loading" | "ready" | "failed";
+const PENDING_SEARCH_KEY = "pantry-chef-pending-search";
 
 const emptySubscription: SubscriptionState = {
   enabled: false,
@@ -66,6 +67,71 @@ export default function App() {
     ? "Pro ∞"
     : `${Math.min(usage.usedSearches, usage.freeLimit)} of ${usage.freeLimit} free searches`;
 
+  const syncSessionToServer = async () => {
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) {
+      return false;
+    }
+
+    const sessionResult = await supabase.auth.getSession();
+    const session = sessionResult.data.session;
+
+    if (!session?.access_token) {
+      return false;
+    }
+
+    const response = await fetch("/api/auth/session", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify({
+        accessToken: session.access_token,
+        refreshToken: session.refresh_token,
+      }),
+    });
+
+    return response.ok;
+  };
+
+  const readPendingSearch = () => {
+    if (typeof window === "undefined") {
+      return null;
+    }
+
+    const raw = window.sessionStorage.getItem(PENDING_SEARCH_KEY);
+    if (!raw) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(raw) as string[];
+      return Array.isArray(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const writePendingSearch = (nextIngredients: string[]) => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.sessionStorage.setItem(
+      PENDING_SEARCH_KEY,
+      JSON.stringify(nextIngredients),
+    );
+  };
+
+  const clearPendingSearch = () => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.sessionStorage.removeItem(PENDING_SEARCH_KEY);
+  };
+
   useEffect(() => {
     let isMounted = true;
 
@@ -81,32 +147,6 @@ export default function App() {
         "error_description",
       ].forEach((key) => url.searchParams.delete(key));
       window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
-    };
-
-    const syncSessionToServer = async () => {
-      const supabase = getSupabaseBrowserClient();
-      if (!supabase) {
-        return;
-      }
-
-      const sessionResult = await supabase.auth.getSession();
-      const session = sessionResult.data.session;
-
-      if (!session?.access_token) {
-        return;
-      }
-
-      await fetch("/api/auth/session", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-        body: JSON.stringify({
-          accessToken: session.access_token,
-          refreshToken: session.refresh_token,
-        }),
-      });
     };
 
     const loadState = async () => {
@@ -596,6 +636,7 @@ export default function App() {
   };
 
   const handleCancelSubscription = async () => {
+    setErrorMessage("");
     const response = await fetch("/api/subscription/cancel", {
       method: "POST",
       credentials: "include",
@@ -609,15 +650,19 @@ export default function App() {
       return;
     }
 
-    await refreshSubscription();
+    const data = (await response.json()) as {
+      ok: boolean;
+      subscription?: SubscriptionState;
+    };
+
+    if (data.subscription) {
+      setSubscription(data.subscription);
+    } else {
+      await refreshSubscription();
+    }
   };
 
-  const fetchRecipes = async () => {
-    if (!isAuthenticated) {
-      handleRequestSignIn();
-      return;
-    }
-
+  const executeRecipeSearch = async (searchIngredients: string[]) => {
     setIsLoading(true);
     setErrorMessage("");
 
@@ -628,7 +673,7 @@ export default function App() {
           "Content-Type": "application/json",
         },
         credentials: "include",
-        body: JSON.stringify({ ingredients }),
+        body: JSON.stringify({ ingredients: searchIngredients }),
       });
 
       if (!response.ok) {
@@ -642,6 +687,69 @@ export default function App() {
           | null;
 
         if (errorPayload?.code === "auth_required") {
+          const resynced = await syncSessionToServer();
+          if (resynced) {
+            const retryResponse = await fetch("/api/recipes/suggest", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              credentials: "include",
+              body: JSON.stringify({ ingredients: searchIngredients }),
+            });
+
+            if (retryResponse.ok) {
+              const retryData = (await retryResponse.json()) as RecipeResponse;
+              const normalizedRetryGroup = normalizeSearchGroup({
+                ...retryData.historyGroup,
+                recipes: normalizeRecipes(retryData.historyGroup.recipes),
+              });
+              const retryIngredientKey = getIngredientKey(retryData.ingredients);
+              const retryExistingGroup = searchGroups.find(
+                (group) => getIngredientKey(group.ingredients) === retryIngredientKey,
+              );
+
+              setUsage(retryData.usage);
+              setSubscription(retryData.subscription);
+
+              if (retryExistingGroup) {
+                const refreshedGroup: RecipeSearchGroup = {
+                  ...normalizedRetryGroup,
+                  id: retryExistingGroup.id,
+                };
+
+                setSearchGroups((current) => [
+                  refreshedGroup,
+                  ...current.filter((group) => group.id !== retryExistingGroup.id),
+                ]);
+                setActiveView("discover");
+                setLastFetchSummary(
+                  `Updated results for ${retryData.ingredients.join(", ")}.`,
+                );
+                focusSearchGroup(retryExistingGroup.id);
+                void loadImagesForGroup(refreshedGroup);
+                return;
+              }
+
+              setImageStates((current) => {
+                const next = { ...current };
+                for (const recipe of normalizedRetryGroup.recipes) {
+                  next[`${normalizedRetryGroup.id}:${recipe.id}`] = "idle";
+                }
+                return next;
+              });
+              setSearchGroups((current) => [normalizedRetryGroup, ...current]);
+              setActiveView("discover");
+              setLastFetchSummary(
+                `${retryData.cached ? "Loaded from cache" : "Fresh AI suggestions"} for ${retryData.ingredients.join(", ")}.`,
+              );
+              focusSearchGroup(normalizedRetryGroup.id);
+              void loadImagesForGroup(normalizedRetryGroup);
+              return;
+            }
+          }
+
+          writePendingSearch(searchIngredients);
           handleRequestSignIn();
           return;
         }
@@ -706,6 +814,31 @@ export default function App() {
       setIsLoading(false);
     }
   };
+
+  const fetchRecipes = async () => {
+    if (!isAuthenticated) {
+      writePendingSearch(ingredients);
+      handleRequestSignIn();
+      return;
+    }
+
+    await executeRecipeSearch(ingredients);
+  };
+
+  useEffect(() => {
+    if (!isAuthenticated || isLoading) {
+      return;
+    }
+
+    const pendingSearch = readPendingSearch();
+    if (!pendingSearch || pendingSearch.length === 0) {
+      return;
+    }
+
+    clearPendingSearch();
+    setIngredients(pendingSearch);
+    void executeRecipeSearch(pendingSearch);
+  }, [isAuthenticated, isLoading]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -806,6 +939,16 @@ export default function App() {
         </nav>
       </header>
 
+      {isAuthenticated && subscription.cancelAtPeriodEnd ? (
+        <div className="mx-auto mb-6 w-full max-w-7xl rounded-[24px] border border-sage-500/20 bg-sage-500/10 px-5 py-4 text-sm text-sage-700">
+          Your Pro plan remains active until{" "}
+          {subscription.currentPeriodEnd
+            ? new Date(subscription.currentPeriodEnd).toLocaleDateString()
+            : "the end of the current billing period"}
+          .
+        </div>
+      ) : null}
+
       <main className="mx-auto w-full max-w-7xl space-y-6">
         {activeView === "discover" ? (
           <>
@@ -841,7 +984,7 @@ export default function App() {
 
                 {!isAuthenticated ? (
                   <div className="mx-auto mt-6 max-w-2xl rounded-[28px] border border-dashed border-stone-300/80 bg-white/50 p-5 text-sm leading-6 text-muted-600">
-                    Sign in with a magic link before your first search so your bookmarks,
+                    Sign in with a one-time code before your first search so your bookmarks,
                     history, and subscription stay tied to your account.
                   </div>
                 ) : null}
@@ -891,16 +1034,6 @@ export default function App() {
                   </p>
                 )}
               </div>
-
-              {subscription.cancelAtPeriodEnd ? (
-                <p className="mb-4 rounded-2xl bg-sage-500/10 px-4 py-4 text-sm text-sage-700">
-                  Your Pro plan will stay active until{" "}
-                  {subscription.currentPeriodEnd
-                    ? new Date(subscription.currentPeriodEnd).toLocaleDateString()
-                    : "the end of the current billing period"}
-                  .
-                </p>
-              ) : null}
 
               {errorMessage ? (
                 <p className="mb-4 rounded-2xl bg-terracotta-500/10 px-4 py-4 text-sm text-[#8b381a]">

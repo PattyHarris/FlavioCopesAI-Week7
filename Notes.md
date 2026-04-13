@@ -117,3 +117,113 @@ For sandbox, the base API URL is https://sandbox-api.polar.sh/v1. Polar also not
    find your-test-email@example.com
    delete the user there
    That gives you a nearly full fresh-start test for that email.
+
+## Auth UX Decision
+
+For a realistic production-style experience, the preferred auth flow for Pantry Chef is:
+
+- one email field
+- one one-time code sent by email
+- one OTP entry step in the same browser tab
+- no password
+- no redirect-based magic-link dependency
+
+This is the smoothest passwordless UX and avoids the cross-browser problems that came up during testing when email links opened in Safari instead of the original Chrome session.
+
+Important Supabase nuance:
+
+- for an existing confirmed user, email OTP behaves like a true one-step sign-in flow
+- for a brand new user, Supabase may treat the request as signup first, especially if email confirmation is enabled
+- that can trigger a signup confirmation email instead of the expected OTP email
+
+So the desired product UX is still "email + code = done", but Supabase's default new-user behavior can make first-time testing feel like a two-step signup-plus-OTP flow.
+
+Going forward, the project direction should favor realistic UX over classroom-only convenience:
+
+- keep the in-app OTP dialog
+- avoid relying on magic-link redirects
+- aim for seamless passwordless sign-in/signup behavior
+- treat cross-browser link opening as something to avoid rather than depend on
+
+## Seed User For Testing
+
+For this project, the best local testing pattern is to keep one confirmed seed user in Supabase Auth and reuse it for OTP sign-in tests.
+
+Do not insert a fake user directly into `auth.users` with SQL. Supabase Auth manages that table internally, and manual inserts there are not the normal or safe path.
+
+Recommended approach:
+
+1. Create a real test user with an email address you can access.
+2. Confirm that user once through the normal Supabase email flow.
+3. Keep that auth user in place for future OTP tests.
+4. For retests, clear only app data like `bookmarks` and `search_history` instead of deleting the auth user.
+
+Practical Supabase UI path:
+
+- `Authentication > Users`
+- create or invite the test user there if your project UI supports it
+- or trigger the normal sign-up/sign-in flow once and confirm the email
+
+This keeps the test flow aligned with the intended production UX while avoiding the repeated new-user signup confirmation path.
+
+## Resend SMTP Setup For Supabase
+
+For a more realistic passwordless auth flow, Supabase Auth emails can be sent through Resend SMTP instead of the default Supabase mail service.
+
+Architecture:
+
+- `Supabase` handles authentication
+- `Resend` sends the auth emails over SMTP
+- `Render` is only relevant for hosting the app, not for auth email delivery
+
+Recommended setup:
+
+1. Create a Resend account.
+2. Add and verify a sending domain in Resend.
+3. Create a Resend API key.
+4. In Supabase, go to `Authentication > Email > SMTP Settings`.
+5. Enable custom SMTP and use:
+
+   - Host: `smtp.resend.com`
+   - Port: `465`
+   - Username: `resend`
+   - Password: `YOUR_RESEND_API_KEY`
+   - Sender email: an address on the verified domain, for example `no-reply@auth.yourdomain.com`
+   - Sender name: `Pantry Chef`
+
+6. Save the settings and send a test email from Supabase.
+
+For smoother local testing, it can help to turn off `Confirm email` in Supabase under the Email provider settings. That removes the extra signup-confirmation step and makes passwordless OTP behave more like a one-step sign-in flow.
+
+Production note:
+
+- Using Resend SMTP is realistic for production.
+- Turning off `Confirm email` may be useful for classroom/testing scenarios, but should be considered carefully for a real production app.
+
+### About Resend Domains
+
+Resend requires a real domain or subdomain that you control in DNS.
+
+That usually means:
+
+- a domain purchased from a registrar such as GoDaddy, Namecheap, Cloudflare, or similar
+- or a subdomain of a domain you already own
+
+Why this matters:
+
+- Resend verifies domain ownership by asking you to add DNS records
+- if you cannot edit the domain's DNS records, you cannot verify it
+- the sender email configured in Supabase must use that verified domain
+
+Examples:
+
+- `pantrychef.com`
+- `auth.pantrychef.com`
+- `yourname.dev`
+- `mail.yourname.dev`
+
+Not valid for this use:
+
+- a made-up domain you do not own
+- a Gmail address as the sending domain
+- any domain where you do not have DNS control

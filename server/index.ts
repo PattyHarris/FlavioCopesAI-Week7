@@ -394,7 +394,13 @@ app.post("/api/subscription/cancel", async (request, response) => {
     }
 
     await cancelSubscriptionAtPeriodEnd(subscription.subscriptionId);
-    response.json({ ok: true });
+    response.json({
+      ok: true,
+      subscription: {
+        ...subscription,
+        cancelAtPeriodEnd: true,
+      },
+    });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Unable to schedule cancellation.";
