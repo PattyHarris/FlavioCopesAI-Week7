@@ -9,7 +9,8 @@
     "dev:server": "tsx watch server/index.ts",
     "build": "tsc -b && vite build && tsc -p server/tsconfig.json",
     "preview": "vite preview",
-    "start": "node dist-server/index.js"
+    "start": "node dist-server/index.js",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.100.1",
@@ -29,6 +30,7 @@
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",
+    "@playwright/test": "^1.54.2",
     "concurrently": "^9.1.2",
     "tailwindcss": "^4.2.2",
     "tsx": "^4.19.3",

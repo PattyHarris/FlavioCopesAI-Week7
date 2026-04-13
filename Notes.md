@@ -227,3 +227,47 @@ Not valid for this use:
 - a made-up domain you do not own
 - a Gmail address as the sending domain
 - any domain where you do not have DNS control
+
+## Final Wrap-Up
+
+At this point, the project appears to be in good shape for the Week 7 goals:
+
+- OTP authentication is working
+- user-scoped bookmarks and history are working
+- the free tier and Pro upgrade flow are working
+- cancel-at-period-end subscription behavior is working
+- recipe images are being stored in Supabase Storage
+- Playwright smoke tests are in place
+
+If this were moving beyond the class project, the next things worth considering would be:
+
+1. Security and secrets
+
+- rotate any API keys that were accidentally exposed during development
+- make sure `.env.local` is excluded from git
+- confirm production secrets are stored only in the deployment platform environment settings
+
+2. Production polish
+
+- add clearer user-facing error messages for auth failures, payment failures, and rate limits
+- add a small account/settings area for subscription status and billing state
+- consider whether `Confirm email = false` is acceptable for production or only for this learning project
+
+3. Testing depth
+
+- keep the Playwright smoke tests
+- add deeper tests later for OTP, free-tier exhaustion, and checkout-state transitions
+- consider adding server integration tests for auth middleware and usage enforcement
+
+4. Operations
+
+- verify Render environment variables match local `.env.local`
+- verify Supabase redirect URLs and site URLs match the deployed app
+- verify Resend sender domain and SMTP settings are documented somewhere safe outside the repo
+
+5. Nice future enhancements
+
+- add a user-facing subscription management page
+- add analytics/logging for auth and payment issues
+- add image cleanup or cache maintenance if the project grows
+- add webhook support later if subscription state needs to be more real-time or more robust
